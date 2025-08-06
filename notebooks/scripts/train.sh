@@ -6,8 +6,8 @@
 #SBATCH --gres=gpu:4                          # GPU数量 (根据您的需求修改)
 #SBATCH --mem=128G                             # 内存需求 (根据您的需求修改)
 #SBATCH --time=48:00:00                       # 最大运行时间 (格式: DD-HH:MM:SS)
-#SBATCH --output=/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/logs/train_samll_batch_4gpu_w_clamp_w_reg_correct_normalize_argument.out            # 标准输出文件
-#SBATCH --error=/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/logs/train_small_batch_4gpu_w_clamp_w_reg_correct_normalize_argument.err             # 标准错误文件
+#SBATCH --output=/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/logs/train.out            # 标准输出文件
+#SBATCH --error=/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/logs/train.err             # 标准错误文件
 
 # 激活conda环境
 source activate diffusion

@@ -36,8 +36,8 @@ from wideresnet import *
 
 DATASET_PATH = "/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/datasets"
 CHECKPOINT_PATH = "/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/checkpoints"
-
-pl.seed_everything(42)
+seed = 42
+pl.seed_everything(seed)
 
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
@@ -47,11 +47,9 @@ class CNNModel(nn.Module):
 
     def __init__(self, hidden_features=32, out_dim=10, **kwargs):
         super().__init__()
-        # We increase the hidden dimension over layers. Here pre-calculated for simplicity.
 
         self.f = Wide_ResNet(depth=28, widen_factor=2, norm=None, dropout_rate=0.0)
         self.energy_output = nn.Linear(self.f.last_dim, out_dim)
-        # Series of convolutions and Swish activation functions
 
     def forward(self, x):
         logits = self.energy_output(self.f(x))
@@ -60,8 +58,10 @@ class CNNModel(nn.Module):
 
 class DeepEnergyModel(pl.LightningModule):
 
-    def __init__(self, img_shape, batch_size, max_len=10000, alpha=0.01, lr=1e-4, beta1=0.0, **CNN_args):
+    def __init__(self, img_shape, batch_size, max_len=10000, alpha=0.01, lr=1e-4, beta1=0.9, beta2=0.999 ,weight_decay=0.0, warmup_iters=1000,  decay_epoch=50, decay_rate=0.3, seed=42, **CNN_args):
         super().__init__()
+
+        pl.seed_everything(seed)
         self.save_hyperparameters()
         self.img_shape = img_shape
         self.sample_size = batch_size
@@ -75,17 +75,20 @@ class DeepEnergyModel(pl.LightningModule):
         return energy, logits
 
     def configure_optimizers(self):
-        # Energy models can have issues with momentum as the loss surfaces changes with its parameters.
-        # Hence, we set it to 0 by default.
-        optimizer = optim.Adam(self.parameters(), lr=self.hparams.lr, betas=(self.hparams.beta1, 0.999))
-        scheduler = optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.97) # Exponential decay over epochs
-        return [optimizer], [scheduler]
+        def lr_lambda(epoch):
+            if epoch % self.hparams.decay_epoch == 0:
+                return self.hparams.decay_rate
+            else:
+                return 1
+        optimizer = optim.Adam(self.parameters(), lr=self.hparams.lr, betas=(self.hparams.beta1, self.hparams.beta2), weight_decay=self.hparams.weight_decay)
+        warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0/self.hparams.warmup_iters, total_iters=self.hparams.warmup_iters)
+        decay_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
+        return [optimizer], [warmup_scheduler,decay_scheduler]
 
     def training_step(self, batch, batch_idx):
         # We add minimal noise to the original images to prevent the model from focusing on purely "clean" inputs
         real_imgs, label = batch
-        small_noise = torch.randn_like(real_imgs) * 0.005
-        real_imgs.add_(small_noise).clamp_(min=-1.0, max=1.0)
 
         # Obtain samples
         fake_imgs = self.sample_new_exmps(steps=20, step_size=1)
@@ -99,15 +102,12 @@ class DeepEnergyModel(pl.LightningModule):
         real_out, fake_out = energy.chunk(2, dim=0)
         real_logits, _ = logits.chunk(2, dim=0)
 
-        reg_loss = self.hparams.alpha * (real_out ** 2 + fake_out ** 2).mean()
         cdiv_loss = fake_out.mean() - real_out.mean()
         classification_loss = nn.CrossEntropyLoss()(real_logits,label)
-        loss = reg_loss + cdiv_loss + classification_loss
-        #loss = cdiv_loss + classification_loss
+        loss = cdiv_loss + classification_loss
 
         # Logging
         self.log('loss', loss, sync_dist=True)
-        self.log('loss_regularization', reg_loss, sync_dist=True)
         self.log('loss_contrastive_divergence', cdiv_loss, sync_dist=True)
         self.log('loss_classify',classification_loss, sync_dist=True)
         self.log('metrics_avg_real', real_out.mean(), sync_dist=True)
@@ -192,12 +192,11 @@ class DeepEnergyModel(pl.LightningModule):
         for _ in range(steps):
             # Part 1: Add noise to the input.
             noise.normal_(0, 1)
-            inp_imgs.data.add_(0.01*noise.data)
+            inp_imgs.data.add_(0.01 * noise.data)
             inp_imgs.data.clamp_(min=-1.0, max=1.0)
             # Part 2: calculate gradients for the current input.
             out_imgs = -self.cnn(inp_imgs)[0]
             out_imgs.sum().backward()
-            inp_imgs.grad.data.clamp_(-0.03, 0.03) # For stabilizing and preventing too high gradients
 
             # Apply gradients to our current samples
             inp_imgs.data.add_(-step_size * inp_imgs.grad.data)
@@ -262,7 +261,7 @@ class DeepEnergyModel(pl.LightningModule):
             # Part 2: calculate gradients for the current input.
             out_imgs = -self.cnn(inp_imgs)[1][...,conditional_index]
             out_imgs.sum().backward()
-            inp_imgs.grad.data.clamp_(-0.03, 0.03) # For stabilizing and preventing too high gradients
+            #inp_imgs.grad.data.clamp_(-0.03, 0.03) # For stabilizing and preventing too high gradients
 
             # Apply gradients to our current samples
             inp_imgs.data.add_(-step_size * inp_imgs.grad.data)
@@ -285,6 +284,21 @@ class DeepEnergyModel(pl.LightningModule):
             return torch.stack(imgs_per_step, dim=0)
         else:
             return inp_imgs
+
+class RestartTrainingCallback(pl.Callback):
+    def __init__(self):
+        super().__init__()
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        if trainer.callback_metrics['loss'].abs().item() > 1e8:
+            ckpt = torch.load(trainer.checkpoint_callback.best_model_path, map_location=pl_module.device)
+
+            pl_module.load_state_dict(ckpt['state_dict'])
+            trainer.fit_loop.epoch_progress.current.completed = ckpt['epoch']
+            trainer.fit_loop.epoch_loop._batches_that_stepped = ckpt['global_step']
+
+            pl.seed_everything(pl_module.hparams.seed+1)
+            pl_module.hparams.seed += 1
 
 class GenerateCallback(pl.Callback):
 
@@ -385,12 +399,13 @@ class OutlierCallback(pl.Callback):
         trainer.logger.experiment.add_scalar("rand_out", rand_out, global_step=trainer.current_epoch)
 
 def main(args):
+
     transform_train = transforms.Compose([transforms.Pad(4, padding_mode="reflect"),
                 transforms.RandomCrop(32),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5,0.5,0.5], std=[0.5,0.5,0.5],
-                lambda x: x + args.sigma * torch.rand_like(x))]
+                transforms.Normalize(mean=[0.5,0.5,0.5], std=[0.5,0.5,0.5]),
+                lambda x: x + args.sigma * torch.rand_like(x)]
                 )
     transform_test = transforms.Compose([transforms.ToTensor(),
                 transforms.Normalize(mean=[0.5,0.5,0.5], std=[0.5,0.5,0.5]),
@@ -403,24 +418,24 @@ def main(args):
     train_loader = DataLoader(train_dataset, batch_size = args.batch_size, shuffle = True, num_workers = args.num_workers, drop_last=True, pin_memory=args.pin_memory)
     test_loader = DataLoader(test_dataset, batch_size = args.batch_size, shuffle = False, num_workers = args.num_workers, drop_last=True, pin_memory=args.pin_memory)
 
-    trainer = pl.Trainer(default_root_dir=os.path.join(CHECKPOINT_PATH, "CIFAR10"),
+    trainer = pl.Trainer(default_root_dir=os.path.join(args.check_point_path, "CIFAR10"),
                          accelerator="gpu",
                          strategy="ddp_find_unused_parameters_true",
                          devices=args.devices,
                          max_epochs=args.max_epochs,
-                         gradient_clip_val=0.1,
                          enable_progress_bar=True,
                          enable_model_summary=True,
                          enable_checkpointing=True,
-                         callbacks=[ModelCheckpoint(save_weights_only=True, mode="min", monitor='val_contrastive_divergence'),
+                         callbacks=[RestartTrainingCallback(),
+                                    ModelCheckpoint(save_weights_only=True, save_top_k=1, mode="max", monitor='val_accuracy'),
                                     GenerateCallback(every_n_epochs=5),
                                     ConditionalGenerateCallback(every_n_epochs=5),
                                     SamplerCallback(every_n_epochs=5),
                                     OutlierCallback(),
-                                    LearningRateMonitor("epoch")
+                                    LearningRateMonitor("step")
                                    ])
     # Check whether pretrained model exists. If yes, load it and skip training
-    pretrained_filename = os.path.join(CHECKPOINT_PATH, "CIFAR10.ckpt")
+    pretrained_filename = os.path.join(args.check_point_path, "CIFAR10.ckpt")
     if os.path.isfile(pretrained_filename):
         print("Found pretrained model, loading...")
         model = DeepEnergyModel.load_from_checkpoint(pretrained_filename)
@@ -429,22 +444,32 @@ def main(args):
         model = DeepEnergyModel(img_shape=(3,32,32),
                                 batch_size=args.batch_size,
                                 lr=args.lr,
-                                beta1=args.beta1)
+                                beta1=args.beta1,
+                                beta2=args.beta2,
+                                weight_decay=args.weight_decay,
+                                warmup_iters=args.warmup_iters,
+                                decay_epoch=args.decay_epoch,
+                                decay_rate=args.decay_rate)
 
         trainer.fit(model, train_loader, test_loader)
         model = DeepEnergyModel.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--sigma",type=float,default=0.01)
+    parser.add_argument("--sigma",type=float,default=0.03)
     parser.add_argument("--batch_size",type=int,default=16)
+    parser.add_argument("-warmup_iters",type=int,default=1000)
     parser.add_argument("--lr",type=float,default=1e-4)
-    parser.add_argument("--beta1",type=float,default=0.0)
+    parser.add_argument("--beta1",type=float,default=0.9)
+    parser.add_argument("--beta2",type=float,default=0.999)
+    parser.add_argument("--weight_decay",type=float,default=0.0)
+    parser.add_argument("--decay_epoch",type=int,default=50)
+    parser.add_argument("--decay_rate",type=float,default=0.3)
     parser.add_argument("--max_epochs",type=int,default=150)
     parser.add_argument("--devices",type=int,default=4)
     parser.add_argument("--num_workers",type=int,default=4)
     parser.add_argument("--drop_last",type=bool,default=True)
     parser.add_argument("--pin_memory",type=bool,default=False)
-
+    parser.add_argument("--check_point_path",type=str,default="/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/checkpoints")
     args = parser.parse_args()
     main(args)
