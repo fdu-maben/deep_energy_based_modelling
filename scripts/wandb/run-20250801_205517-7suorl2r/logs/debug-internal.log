@@ -1,0 +1,69 @@
+2025-08-01 20:55:18,351 INFO    MainThread:441342 [internal.py:wandb_internal():90] W&B internal server running at pid: 441342, started at: 2025-08-01 20:55:18.351103
+2025-08-01 20:55:18,354 INFO    WriterThread:441342 [datastore.py:open_for_write():75] open: /work/home/maben/project/blue_whale_lab/projects/pareto_ebm/project/scripts/wandb/run-20250801_205517-7suorl2r/run-7suorl2r.wandb
+2025-08-01 20:55:18,359 DEBUG   SenderThread:441342 [sender.py:send():235] send: header
+2025-08-01 20:55:18,359 DEBUG   SenderThread:441342 [sender.py:send():235] send: run
+2025-08-01 20:55:47,637 DEBUG   HandlerThread:441342 [handler.py:handle_request():141] handle_request: shutdown
+2025-08-01 20:55:47,638 INFO    HandlerThread:441342 [handler.py:finish():806] shutting down handler
+2025-08-01 20:55:48,371 INFO    WriterThread:441342 [datastore.py:close():279] close: /work/home/maben/project/blue_whale_lab/projects/pareto_ebm/project/scripts/wandb/run-20250801_205517-7suorl2r/run-7suorl2r.wandb
+2025-08-01 20:56:06,009 ERROR   SenderThread:441342 [retry.py:__call__():126] Retry attempt failed:
+Traceback (most recent call last):
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/connection.py", line 199, in _new_conn
+    sock = connection.create_connection(
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/util/connection.py", line 85, in create_connection
+    raise err
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+TimeoutError: timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/connectionpool.py", line 789, in urlopen
+    response = self._make_request(
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/connectionpool.py", line 490, in _make_request
+    raise new_e
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/connectionpool.py", line 466, in _make_request
+    self._validate_conn(conn)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/connectionpool.py", line 1095, in _validate_conn
+    conn.connect()
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/connection.py", line 693, in connect
+    self.sock = sock = self._new_conn()
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/connection.py", line 208, in _new_conn
+    raise ConnectTimeoutError(
+urllib3.exceptions.ConnectTimeoutError: (<urllib3.connection.HTTPSConnection object at 0x7f3f43201210>, 'Connection to api.wandb.ai timed out. (connect timeout=10)')
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/connectionpool.py", line 843, in urlopen
+    retries = retries.increment(
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/util/retry.py", line 519, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='api.wandb.ai', port=443): Max retries exceeded with url: /graphql (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x7f3f43201210>, 'Connection to api.wandb.ai timed out. (connect timeout=10)'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/sdk/lib/retry.py", line 102, in __call__
+    result = self._call_fn(*args, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/sdk/internal/internal_api.py", line 140, in execute
+    return self.client.execute(*args, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 52, in execute
+    result = self._get_result(document, *args, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 60, in _get_result
+    return self.transport.execute(document, *args, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/transport/requests.py", line 38, in execute
+    request = requests.post(self.url, **post_args)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/api.py", line 115, in post
+    return request("post", url, data=data, json=json, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/adapters.py", line 688, in send
+    raise ConnectTimeout(e, request=request)
+requests.exceptions.ConnectTimeout: HTTPSConnectionPool(host='api.wandb.ai', port=443): Max retries exceeded with url: /graphql (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x7f3f43201210>, 'Connection to api.wandb.ai timed out. (connect timeout=10)'))
