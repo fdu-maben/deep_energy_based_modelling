@@ -6,8 +6,8 @@
 #SBATCH --gres=gpu:4                          # GPU数量 (根据您的需求修改)
 #SBATCH --mem=128G                             # 内存需求 (根据您的需求修改)
 #SBATCH --time=48:00:00                       # 最大运行时间 (格式: DD-HH:MM:SS)
-#SBATCH --output=/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/logs/train.out            # 标准输出文件
-#SBATCH --error=/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/logs/train.err             # 标准错误文件
+#SBATCH --output=/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/logs/train_loop_new_new_wo_clamp_final_0.1_noise.out            # 标准输出文件
+#SBATCH --error=/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/logs/train_loop_new_new_wo_clamp_final_0.1_noise.err             # 标准错误文件
 
 # 激活conda环境
 source activate diffusion
@@ -40,7 +40,12 @@ cd /work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/scripts
 
 # 运行训练脚本
 echo "Starting training..."
-python train_joint_energy_based_model_CIFAR10.py
+seed=1
+for i in {1..10}
+do
+    python train_joint_energy_based_model_CIFAR10.py --batch_size 16 --devices 4 --seed $seed
+    seed=$((seed+1))
+done
 
 # 训练完成后的处理
 echo "Training completed!"

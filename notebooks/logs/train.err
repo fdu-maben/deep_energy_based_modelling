@@ -41,3 +41,11 @@ LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0,1,2,3]
 [rank: 2] Seed set to 43
 [rank: 1] Seed set to 43
 [rank: 0] Seed set to 43
+slurmstepd: error: *** JOB 130615 ON g01n05 CANCELLED AT 2025-08-06T19:29:27 ***
+[rank: 1] Received SIGTERM: 15
+[rank: 3] Received SIGTERM: 15
+[rank: 2] Received SIGTERM: 15
+[rank: 0] Received SIGTERM: 15
+[rank: 1] Received SIGTERM: 15
+[rank: 3] Received SIGTERM: 15
+[rank: 2] Received SIGTERM: 15

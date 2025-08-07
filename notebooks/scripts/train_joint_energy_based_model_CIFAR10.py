@@ -36,8 +36,6 @@ from wideresnet import *
 
 DATASET_PATH = "/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/datasets"
 CHECKPOINT_PATH = "/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/checkpoints"
-seed = 42
-pl.seed_everything(seed)
 
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
@@ -61,14 +59,13 @@ class DeepEnergyModel(pl.LightningModule):
     def __init__(self, img_shape, batch_size, max_len=10000, alpha=0.01, lr=1e-4, beta1=0.9, beta2=0.999 ,weight_decay=0.0, warmup_iters=1000,  decay_epoch=50, decay_rate=0.3, seed=42, **CNN_args):
         super().__init__()
 
-        pl.seed_everything(seed)
         self.save_hyperparameters()
         self.img_shape = img_shape
         self.sample_size = batch_size
         self.max_len = max_len
         self.cnn = CNNModel(**CNN_args)
         self.example_input_array = torch.zeros(1, *img_shape)
-        self.examples = [(torch.rand((1,)+img_shape)*2-1) for _ in range(self.sample_size)]
+        self.register_buffer("examples", torch.cat([(torch.rand((1,)+img_shape)*2-1) for _ in range(self.max_len)],dim=0))
 
     def forward(self, x):
         energy, logits = self.cnn(x)
@@ -76,27 +73,21 @@ class DeepEnergyModel(pl.LightningModule):
 
     def configure_optimizers(self):
         def lr_lambda(epoch):
-            if epoch % self.hparams.decay_epoch == 0:
-                return self.hparams.decay_rate
-            else:
-                return 1
+            return pow(self.hparams.decay_rate, epoch // self.hparams.decay_epoch)
         optimizer = optim.Adam(self.parameters(), lr=self.hparams.lr, betas=(self.hparams.beta1, self.hparams.beta2), weight_decay=self.hparams.weight_decay)
-        warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0/self.hparams.warmup_iters, total_iters=self.hparams.warmup_iters)
-        decay_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+        #optimizer = optim.SGD(self.parameters(), lr=self.hparams.lr)
+        #warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=self.hparams.lr * 1.0/self.hparams.warmup_iters, end_factor=1.0, total_iters=self.hparams.warmup_iters)
+        #decay_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
-        return [optimizer], [warmup_scheduler,decay_scheduler]
+        #return [optimizer],[{"scheduler" : decay_scheduler,"interval" : "epoch","frequency" : 1},{"scheduler" : warmup_scheduler,"interval" : "step","frequency" : 1}]
+        return optimizer
 
     def training_step(self, batch, batch_idx):
-        # We add minimal noise to the original images to prevent the model from focusing on purely "clean" inputs
         real_imgs, label = batch
 
-        # Obtain samples
         fake_imgs = self.sample_new_exmps(steps=20, step_size=1)
-        
-        # 确保fake_imgs在正确的设备上
         fake_imgs = fake_imgs.to(self.device)
 
-        # Predict energy score for all images
         inp_imgs = torch.cat([real_imgs, fake_imgs], dim=0)
         energy, logits = self.cnn(inp_imgs)
         real_out, fake_out = energy.chunk(2, dim=0)
@@ -106,17 +97,19 @@ class DeepEnergyModel(pl.LightningModule):
         classification_loss = nn.CrossEntropyLoss()(real_logits,label)
         loss = cdiv_loss + classification_loss
 
-        # Logging
         self.log('loss', loss, sync_dist=True)
         self.log('loss_contrastive_divergence', cdiv_loss, sync_dist=True)
         self.log('loss_classify',classification_loss, sync_dist=True)
         self.log('metrics_avg_real', real_out.mean(), sync_dist=True)
         self.log('metrics_avg_fake', fake_out.mean(), sync_dist=True)
+
+        if loss.abs().item() > 1e8:
+            1 / 0
+        if self.global_step <= self.hparams.warmup_iters:
+            self.optimizers().optimizer.param_groups[0]['lr'] = self.hparams.lr * self.global_step / float(self.hparams.warmup_iters)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        # For validating, we calculate the contrastive divergence between purely random images and unseen examples
-        # Note that the validation/test step of energy-based models depends on what we are interested in the model
         real_imgs, label = batch
         fake_imgs = torch.rand_like(real_imgs) * 2 - 1
 
@@ -142,20 +135,20 @@ class DeepEnergyModel(pl.LightningModule):
             steps - Number of iterations in the MCMC algorithm
             step_size - Learning rate nu in the algorithm above
         """
-        
         # Choose 95% of the batch from the buffer, 5% generate from scratch
-        n_new = np.random.binomial(self.sample_size, 0.05)
-        rand_imgs = torch.rand((n_new,) + self.img_shape) * 2 - 1
-        old_imgs = torch.cat(random.choices(self.examples, k=self.sample_size-n_new), dim=0)
+        index = np.random.randint(0,self.max_len,self.sample_size)
 
-        inp_imgs = torch.cat([rand_imgs, old_imgs], dim=0).detach()
+        old_imgs = self.examples[index]
+        rand_imgs = torch.rand((self.sample_size,) + self.img_shape, device=old_imgs.device) * 2 - 1
+        choose_random = (torch.rand(self.sample_size) < 0.05).float()[:, None, None, None].to(old_imgs.device)
+        inp_imgs = choose_random * rand_imgs + (1 - choose_random) * old_imgs
+        inp_imgs = inp_imgs.detach()
 
         # Perform MCMC sampling
         inp_imgs = self.generate_samples(inp_imgs, steps=steps, step_size=step_size)
 
         # Add new images to the buffer and remove old ones if needed
-        self.examples = list(inp_imgs.to(torch.device("cpu")).chunk(self.sample_size, dim=0)) + self.examples
-        self.examples = self.examples[:self.max_len]
+        self.examples[index] = inp_imgs
         return inp_imgs
 
     def generate_samples(self, inp_imgs, steps=20, step_size=1, return_img_per_step=False):
@@ -168,8 +161,6 @@ class DeepEnergyModel(pl.LightningModule):
             step_size - Learning rate nu in the algorithm above
             return_img_per_step - If True, we return the sample at every iteration of the MCMC
         """
-        # Before MCMC: set model parameters to "required_grad=False"
-        # because we are only interested in the gradients of the input.
         is_training = self.cnn.training
         self.cnn.eval()
         for p in self.cnn.parameters():
@@ -177,42 +168,32 @@ class DeepEnergyModel(pl.LightningModule):
         inp_imgs = inp_imgs.to(self.device)
         inp_imgs.requires_grad = True
 
-        # Enable gradient calculation if not already the case
         had_gradients_enabled = torch.is_grad_enabled()
         torch.set_grad_enabled(True)
 
-        # We use a buffer tensor in which we generate noise each loop iteration.
-        # More efficient than creating a new tensor every iteration.
         noise = torch.randn(inp_imgs.shape, device=self.device)
 
-        # List for storing generations at each step (for later analysis)
         imgs_per_step = []
 
-        # Loop over K (steps)
         for _ in range(steps):
-            # Part 1: Add noise to the input.
+
             noise.normal_(0, 1)
             inp_imgs.data.add_(0.01 * noise.data)
-            inp_imgs.data.clamp_(min=-1.0, max=1.0)
-            # Part 2: calculate gradients for the current input.
+
             out_imgs = -self.cnn(inp_imgs)[0]
             out_imgs.sum().backward()
 
-            # Apply gradients to our current samples
             inp_imgs.data.add_(-step_size * inp_imgs.grad.data)
             inp_imgs.grad.detach_()
             inp_imgs.grad.zero_()
-            inp_imgs.data.clamp_(min=-1.0, max=1.0)
 
             if return_img_per_step:
                 imgs_per_step.append(inp_imgs.clone().detach())
 
-        # Reactivate gradients for parameters for training
         for p in self.cnn.parameters():
             p.requires_grad = True
         self.cnn.train(is_training)
 
-        # Reset gradient calculation to setting before this function
         torch.set_grad_enabled(had_gradients_enabled)
 
         if return_img_per_step:
@@ -230,8 +211,6 @@ class DeepEnergyModel(pl.LightningModule):
             step_size - Learning rate nu in the algorithm above
             return_img_per_step - If True, we return the sample at every iteration of the MCMC
         """
-        # Before MCMC: set model parameters to "required_grad=False"
-        # because we are only interested in the gradients of the input.
         is_training = self.cnn.training
         self.cnn.eval()
         for p in self.cnn.parameters():
@@ -239,35 +218,26 @@ class DeepEnergyModel(pl.LightningModule):
         inp_imgs.requires_grad=True
         inp_imgs = inp_imgs.to(self.device)
 
-        # Enable gradient calculation if not already the case
         had_gradients_enabled = torch.is_grad_enabled()
         torch.set_grad_enabled(True)
 
-
-        # We use a buffer tensor in which we generate noise each loop iteration.
-        # More efficient than creating a new tensor every iteration.
         noise = torch.randn(inp_imgs.shape, device=self.device)
 
-        # List for storing generations at each step (for later analysis)
         imgs_per_step = []
 
-        # Loop over K (steps)
         for _ in range(steps):
             # Part 1: Add noise to the input.
             noise.normal_(0, 1)
             inp_imgs.data.add_(0.01*noise.data)
-            inp_imgs.data.clamp_(min=-1.0, max=1.0)
 
             # Part 2: calculate gradients for the current input.
             out_imgs = -self.cnn(inp_imgs)[1][...,conditional_index]
             out_imgs.sum().backward()
-            #inp_imgs.grad.data.clamp_(-0.03, 0.03) # For stabilizing and preventing too high gradients
 
             # Apply gradients to our current samples
             inp_imgs.data.add_(-step_size * inp_imgs.grad.data)
             inp_imgs.grad.detach_()
             inp_imgs.grad.zero_()
-            inp_imgs.data.clamp_(min=-1.0, max=1.0)
 
             if return_img_per_step:
                 imgs_per_step.append(inp_imgs.clone().detach())
@@ -285,47 +255,43 @@ class DeepEnergyModel(pl.LightningModule):
         else:
             return inp_imgs
 
+    def on_train_epoch_end(self):
+        if self.current_epoch % self.hparams.decay_epoch == 0:
+            for param_group in self.optimizers().optimizer.param_groups:
+                param_group['lr'] = param_group['lr'] * self.hparams.decay_rate
+
 class RestartTrainingCallback(pl.Callback):
     def __init__(self):
         super().__init__()
 
     def on_train_epoch_end(self, trainer, pl_module):
         if trainer.callback_metrics['loss'].abs().item() > 1e8:
-            ckpt = torch.load(trainer.checkpoint_callback.best_model_path, map_location=pl_module.device)
-
-            pl_module.load_state_dict(ckpt['state_dict'])
-            trainer.fit_loop.epoch_progress.current.completed = ckpt['epoch']
-            trainer.fit_loop.epoch_loop._batches_that_stepped = ckpt['global_step']
-
-            pl.seed_everything(pl_module.hparams.seed+1)
-            pl_module.hparams.seed += 1
+            trainer.should_stop = True
 
 class GenerateCallback(pl.Callback):
 
     def __init__(self, batch_size=8, vis_steps=8, num_steps=256, every_n_epochs=5):
         super().__init__()
-        self.batch_size = batch_size         # Number of images to generate
-        self.vis_steps = vis_steps           # Number of steps within generation to visualize
-        self.num_steps = num_steps           # Number of steps to take during generation
-        self.every_n_epochs = every_n_epochs # Only save those images every N epochs (otherwise tensorboard gets quite large)
+        self.batch_size = batch_size         
+        self.vis_steps = vis_steps           
+        self.num_steps = num_steps           
+        self.every_n_epochs = every_n_epochs 
 
     def on_train_epoch_end(self, trainer, pl_module):
-        # Skip for all other epochs
         if trainer.current_epoch % self.every_n_epochs == 0:
-            # Generate images
+            
             imgs_per_step = self.generate_imgs(pl_module)
-            # Plot and add to tensorboard
             for i in range(imgs_per_step.shape[1]):
                 step_size = self.num_steps // self.vis_steps
                 imgs_to_plot = imgs_per_step[step_size-1::step_size,i]
-                grid = torchvision.utils.make_grid(imgs_to_plot, nrow=imgs_to_plot.shape[0], normalize=True)
+                grid = torchvision.utils.make_grid(imgs_to_plot.clamp_(min=-1.0, max=1.0), nrow=imgs_to_plot.shape[0], normalize=True)
                 trainer.logger.experiment.add_image("generation_{}".format(i), grid, global_step=trainer.current_epoch)
 
     def generate_imgs(self, pl_module):
         pl_module.eval()
         start_imgs = torch.rand((self.batch_size,) + pl_module.hparams["img_shape"]).to(pl_module.device)
         start_imgs = start_imgs * 2 - 1
-        torch.set_grad_enabled(True)  # Tracking gradients for sampling necessary
+        torch.set_grad_enabled(True) 
         imgs_per_step = pl_module.generate_samples(start_imgs, steps=self.num_steps, step_size=1, return_img_per_step=True)
         torch.set_grad_enabled(False)
         pl_module.train()
@@ -341,16 +307,14 @@ class ConditionalGenerateCallback(pl.Callback):
         self.every_n_epochs = every_n_epochs # Only save those images every N epochs (otherwise tensorboard gets quite large)
 
     def on_train_epoch_end(self, trainer, pl_module):
-        # Skip for all other epochs
         if trainer.current_epoch % self.every_n_epochs == 0:
-            # Generate images
             for i in range(10):
                 imgs_per_step = self.conditional_generate_imgs(pl_module, i)
-                # Plot and add to tensorboard
+
                 for j in range(imgs_per_step.shape[1]):
                     step_size = self.num_steps // self.vis_steps
                     imgs_to_plot = imgs_per_step[step_size-1::step_size,j]
-                    grid = torchvision.utils.make_grid(imgs_to_plot, nrow=imgs_to_plot.shape[0], normalize=True)
+                    grid = torchvision.utils.make_grid(imgs_to_plot.clamp_(min=-1.0, max=1.0), nrow=imgs_to_plot.shape[0], normalize=True)
                     trainer.logger.experiment.add_image("conditional_generation_{}".format(i), grid, global_step=trainer.current_epoch)
 
     def conditional_generate_imgs(self, pl_module, conditional_index):
@@ -367,16 +331,16 @@ class SamplerCallback(pl.Callback):
 
     def __init__(self, num_imgs=32, every_n_epochs=5):
         super().__init__()
-        self.num_imgs = num_imgs             # Number of images to plot
-        self.every_n_epochs = every_n_epochs # Only save those images every N epochs (otherwise tensorboard gets quite large)
+        self.num_imgs = num_imgs            
+        self.every_n_epochs = every_n_epochs
 
     def on_train_epoch_end(self, trainer, pl_module):
         if trainer.current_epoch % self.every_n_epochs == 0:
             try:
-                exmp_imgs = torch.cat(random.choices(pl_module.examples, k=self.num_imgs), dim=0)
-                # 确保图像在正确的设备上
+                exmp_imgs = torch.stack(random.choices(pl_module.examples, k=self.num_imgs), dim=0)
+
                 exmp_imgs = exmp_imgs.to(pl_module.device)
-                grid = torchvision.utils.make_grid(exmp_imgs, nrow=4, normalize=True)
+                grid = torchvision.utils.make_grid(exmp_imgs.clamp_(min=-1.0, max=1.0), nrow=4, normalize=True)
                 trainer.logger.experiment.add_image("sampler", grid, global_step=trainer.current_epoch)
             except Exception as e:
                 print("Error in SamplerCallback: {}".format(e))
@@ -400,11 +364,12 @@ class OutlierCallback(pl.Callback):
 
 def main(args):
 
+    pl.seed_everything(args.seed)
     transform_train = transforms.Compose([transforms.Pad(4, padding_mode="reflect"),
                 transforms.RandomCrop(32),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5,0.5,0.5], std=[0.5,0.5,0.5]),
+                transforms.Normalize(mean=(0.5,0.5,0.5), std=(0.5,0.5,0.5)),
                 lambda x: x + args.sigma * torch.rand_like(x)]
                 )
     transform_test = transforms.Compose([transforms.ToTensor(),
@@ -426,39 +391,44 @@ def main(args):
                          enable_progress_bar=True,
                          enable_model_summary=True,
                          enable_checkpointing=True,
-                         callbacks=[RestartTrainingCallback(),
-                                    ModelCheckpoint(save_weights_only=True, save_top_k=1, mode="max", monitor='val_accuracy'),
+                         callbacks=[ModelCheckpoint(dirpath="/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/checkpoints/model_checkpoint/ckpt_3",filename="last", enable_version_counter=False,save_weights_only=False, every_n_train_steps=100, save_top_k=1, mode="min", monitor='loss_classify'),
                                     GenerateCallback(every_n_epochs=5),
                                     ConditionalGenerateCallback(every_n_epochs=5),
                                     SamplerCallback(every_n_epochs=5),
                                     OutlierCallback(),
                                     LearningRateMonitor("step")
                                    ])
-    # Check whether pretrained model exists. If yes, load it and skip training
+
     pretrained_filename = os.path.join(args.check_point_path, "CIFAR10.ckpt")
     if os.path.isfile(pretrained_filename):
         print("Found pretrained model, loading...")
         model = DeepEnergyModel.load_from_checkpoint(pretrained_filename)
     else:
-        pl.seed_everything(42)
         model = DeepEnergyModel(img_shape=(3,32,32),
                                 batch_size=args.batch_size,
+                                max_len=args.max_len,
+                                alpha=args.alpha,
                                 lr=args.lr,
                                 beta1=args.beta1,
                                 beta2=args.beta2,
                                 weight_decay=args.weight_decay,
                                 warmup_iters=args.warmup_iters,
                                 decay_epoch=args.decay_epoch,
-                                decay_rate=args.decay_rate)
-
+                                decay_rate=args.decay_rate,
+                                seed=args.seed)
+    if os.path.isfile("/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/checkpoints/model_checkpoint/ckpt_3/last.ckpt"):
+        trainer.fit(model, train_loader, test_loader, ckpt_path="/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/checkpoints/model_checkpoint/ckpt_3/last.ckpt")
+    else:
         trainer.fit(model, train_loader, test_loader)
-        model = DeepEnergyModel.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--sigma",type=float,default=0.03)
+    parser.add_argument("--seed",type=int,default=6)
+    parser.add_argument("--sigma",type=float,default=0.1)
     parser.add_argument("--batch_size",type=int,default=16)
-    parser.add_argument("-warmup_iters",type=int,default=1000)
+    parser.add_argument("--warmup_iters",type=int,default=1000)
+    parser.add_argument("--max_len",type=int,default=10000)
+    parser.add_argument("--alpha",type=float,default=0.01)
     parser.add_argument("--lr",type=float,default=1e-4)
     parser.add_argument("--beta1",type=float,default=0.9)
     parser.add_argument("--beta2",type=float,default=0.999)
@@ -470,6 +440,6 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers",type=int,default=4)
     parser.add_argument("--drop_last",type=bool,default=True)
     parser.add_argument("--pin_memory",type=bool,default=False)
-    parser.add_argument("--check_point_path",type=str,default="/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/checkpoints")
+    parser.add_argument("--check_point_path",type=str,default="/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/checkpoints/CIFAR10_EXP")
     args = parser.parse_args()
     main(args)
