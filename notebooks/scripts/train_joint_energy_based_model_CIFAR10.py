@@ -105,6 +105,7 @@ class DeepEnergyModel(pl.LightningModule):
 
         if loss.abs().item() > 1e8:
             1 / 0
+            
         if self.global_step <= self.hparams.warmup_iters:
             self.optimizers().optimizer.param_groups[0]['lr'] = self.hparams.lr * self.global_step / float(self.hparams.warmup_iters)
         return loss
@@ -255,10 +256,12 @@ class DeepEnergyModel(pl.LightningModule):
         else:
             return inp_imgs
 
+    '''
     def on_train_epoch_end(self):
         if self.current_epoch % self.hparams.decay_epoch == 0:
             for param_group in self.optimizers().optimizer.param_groups:
                 param_group['lr'] = param_group['lr'] * self.hparams.decay_rate
+    '''
 
 class RestartTrainingCallback(pl.Callback):
     def __init__(self):
@@ -373,9 +376,9 @@ def main(args):
                 lambda x: x + args.sigma * torch.rand_like(x)]
                 )
     transform_test = transforms.Compose([transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5,0.5,0.5], std=[0.5,0.5,0.5]),
-                lambda x: x + args.sigma * torch.rand_like(x)]
-                )
+                transforms.Normalize(mean=(0.5,0.5,0.5), std=(0.5,0.5,0.5))
+                #lambda x: x + args.sigma * torch.rand_like(x)]
+                ])
 
     train_dataset = CIFAR10(root = DATASET_PATH, train = True, transform = transform_train, download = True)
     test_dataset = CIFAR10(root = DATASET_PATH, train = False, transform = transform_test, download = True)
@@ -391,7 +394,7 @@ def main(args):
                          enable_progress_bar=True,
                          enable_model_summary=True,
                          enable_checkpointing=True,
-                         callbacks=[ModelCheckpoint(dirpath="/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/checkpoints/model_checkpoint/ckpt_3",filename="last", enable_version_counter=False,save_weights_only=False, every_n_train_steps=100, save_top_k=1, mode="min", monitor='loss_classify'),
+                         callbacks=[ModelCheckpoint(dirpath="/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/checkpoints/CIFAR10_test_wo_noise_sigma_0.1",filename="last", enable_version_counter=False,save_weights_only=False, every_n_train_steps=100, save_top_k=1, mode="min", monitor='loss_classify'),
                                     GenerateCallback(every_n_epochs=5),
                                     ConditionalGenerateCallback(every_n_epochs=5),
                                     SamplerCallback(every_n_epochs=5),
@@ -416,10 +419,12 @@ def main(args):
                                 decay_epoch=args.decay_epoch,
                                 decay_rate=args.decay_rate,
                                 seed=args.seed)
-    if os.path.isfile("/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/checkpoints/model_checkpoint/ckpt_3/last.ckpt"):
-        trainer.fit(model, train_loader, test_loader, ckpt_path="/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/checkpoints/model_checkpoint/ckpt_3/last.ckpt")
+    if os.path.isfile("/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/checkpoints/CIFAR10_final/ckpt/last.ckpt"):
+        trainer.fit(model, train_loader, test_loader)
     else:
         trainer.fit(model, train_loader, test_loader)
+    
+    trainer.test(model, test_loader)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -440,6 +445,6 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers",type=int,default=4)
     parser.add_argument("--drop_last",type=bool,default=True)
     parser.add_argument("--pin_memory",type=bool,default=False)
-    parser.add_argument("--check_point_path",type=str,default="/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/checkpoints/CIFAR10_EXP")
+    parser.add_argument("--check_point_path",type=str,default="/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/checkpoints/CIFAR10_final")
     args = parser.parse_args()
     main(args)

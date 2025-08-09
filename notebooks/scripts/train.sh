@@ -6,8 +6,8 @@
 #SBATCH --gres=gpu:4                          # GPU数量 (根据您的需求修改)
 #SBATCH --mem=128G                             # 内存需求 (根据您的需求修改)
 #SBATCH --time=48:00:00                       # 最大运行时间 (格式: DD-HH:MM:SS)
-#SBATCH --output=/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/logs/train_loop_new_new_wo_clamp_final_0.1_noise.out            # 标准输出文件
-#SBATCH --error=/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/logs/train_loop_new_new_wo_clamp_final_0.1_noise.err             # 标准错误文件
+#SBATCH --output=/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/logs/train_final_4gpu_test_wo_gaussian_sigma_0.1_wo_decay.out            # 标准输出文件
+#SBATCH --error=/work/home/maben/project/blue_whale_lab/projects/pareto_ebm/notebooks/logs/train_final_4gpu_test_wo_gaussian_sigma_0.1_wo_decay.err             # 标准错误文件
 
 # 激活conda环境
 source activate diffusion
@@ -43,7 +43,7 @@ echo "Starting training..."
 seed=1
 for i in {1..10}
 do
-    python train_joint_energy_based_model_CIFAR10.py --batch_size 16 --devices 4 --seed $seed
+    python train_joint_energy_based_model_CIFAR10.py --batch_size 16 --devices 4 --seed $seed --sigma 0.1
     seed=$((seed+1))
 done
 

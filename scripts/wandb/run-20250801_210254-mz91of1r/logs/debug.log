@@ -82,3 +82,4 @@ requests.exceptions.ProxyError: HTTPSConnectionPool(host='api.wandb.ai', port=44
 try: wandb.init(settings=wandb.Settings(start_method='fork'))
 or:  wandb.init(settings=wandb.Settings(start_method='thread'))
 For more info see: https://docs.wandb.ai/library/init#init-start-error
+2025-08-08 21:05:26,160 INFO    MainThread:442245 [wandb_init.py:teardown():276] tearing down wandb.init

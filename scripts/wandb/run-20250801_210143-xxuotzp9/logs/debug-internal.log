@@ -67,3 +67,113 @@ Traceback (most recent call last):
   File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/adapters.py", line 694, in send
     raise ProxyError(e, request=request)
 requests.exceptions.ProxyError: HTTPSConnectionPool(host='api.wandb.ai', port=443): Max retries exceeded with url: /graphql (Caused by ProxyError('Unable to connect to proxy', ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x7f2dad551120>, 'Connection to 192.168.137.80 timed out. (connect timeout=10)')))
+2025-08-08 21:05:31,431 ERROR   MainThread:442155 [internal.py:wandb_internal():165] Thread SenderThread:
+Traceback (most recent call last):
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/connection.py", line 199, in _new_conn
+    sock = connection.create_connection(
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/util/connection.py", line 85, in create_connection
+    raise err
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+TimeoutError: timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/connectionpool.py", line 775, in urlopen
+    self._prepare_proxy(conn)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/connectionpool.py", line 1044, in _prepare_proxy
+    conn.connect()
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/connection.py", line 693, in connect
+    self.sock = sock = self._new_conn()
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/connection.py", line 208, in _new_conn
+    raise ConnectTimeoutError(
+urllib3.exceptions.ConnectTimeoutError: (<urllib3.connection.HTTPSConnection object at 0x7f2dad5518a0>, 'Connection to 192.168.137.80 timed out. (connect timeout=10)')
+
+The above exception was the direct cause of the following exception:
+
+urllib3.exceptions.ProxyError: ('Unable to connect to proxy', ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x7f2dad5518a0>, 'Connection to 192.168.137.80 timed out. (connect timeout=10)'))
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/connectionpool.py", line 843, in urlopen
+    retries = retries.increment(
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/urllib3/util/retry.py", line 519, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='api.wandb.ai', port=443): Max retries exceeded with url: /graphql (Caused by ProxyError('Unable to connect to proxy', ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x7f2dad5518a0>, 'Connection to 192.168.137.80 timed out. (connect timeout=10)')))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/apis/normalize.py", line 22, in wrapper
+    return func(*args, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/sdk/internal/internal_api.py", line 1319, in upsert_run
+    response = self.gql(mutation, variable_values=variable_values, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/sdk/lib/retry.py", line 102, in __call__
+    result = self._call_fn(*args, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/sdk/internal/internal_api.py", line 140, in execute
+    return self.client.execute(*args, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 52, in execute
+    result = self._get_result(document, *args, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 60, in _get_result
+    return self.transport.execute(document, *args, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/transport/requests.py", line 38, in execute
+    request = requests.post(self.url, **post_args)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/api.py", line 115, in post
+    return request("post", url, data=data, json=json, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/adapters.py", line 694, in send
+    raise ProxyError(e, request=request)
+requests.exceptions.ProxyError: HTTPSConnectionPool(host='api.wandb.ai', port=443): Max retries exceeded with url: /graphql (Caused by ProxyError('Unable to connect to proxy', ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x7f2dad5518a0>, 'Connection to 192.168.137.80 timed out. (connect timeout=10)')))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/sdk/internal/internal_util.py", line 51, in run
+    self._run()
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/sdk/internal/internal_util.py", line 102, in _run
+    self._process(record)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/sdk/internal/internal.py", line 310, in _process
+    self._sm.send(record)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/sdk/internal/sender.py", line 237, in send
+    send_handler(record)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/sdk/internal/sender.py", line 695, in send_run
+    self._init_run(run, config_value_dict)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/sdk/internal/sender.py", line 719, in _init_run
+    server_run, inserted = self._api.upsert_run(
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/apis/normalize.py", line 58, in wrapper
+    raise CommError(message, err).with_traceback(sys.exc_info()[2])
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/apis/normalize.py", line 22, in wrapper
+    return func(*args, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/sdk/internal/internal_api.py", line 1319, in upsert_run
+    response = self.gql(mutation, variable_values=variable_values, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/sdk/lib/retry.py", line 102, in __call__
+    result = self._call_fn(*args, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/sdk/internal/internal_api.py", line 140, in execute
+    return self.client.execute(*args, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 52, in execute
+    result = self._get_result(document, *args, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/client.py", line 60, in _get_result
+    return self.transport.execute(document, *args, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/wandb/vendor/gql-0.2.0/wandb_gql/transport/requests.py", line 38, in execute
+    request = requests.post(self.url, **post_args)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/api.py", line 115, in post
+    return request("post", url, data=data, json=json, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/adapters.py", line 694, in send
+    raise ProxyError(e, request=request)
+wandb.errors.CommError: HTTPSConnectionPool(host='api.wandb.ai', port=443): Max retries exceeded with url: /graphql (Caused by ProxyError('Unable to connect to proxy', ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x7f2dad5518a0>, 'Connection to 192.168.137.80 timed out. (connect timeout=10)')))
+2025-08-08 21:05:33,532 INFO    MainThread:442155 [internal.py:handle_exit():80] Internal process exited

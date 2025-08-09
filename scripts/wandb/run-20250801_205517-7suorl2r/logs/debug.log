@@ -82,3 +82,4 @@ Traceback (most recent call last):
   File "/work/home/maben/software/anaconda3/envs/cf-design/lib/python3.10/site-packages/requests/adapters.py", line 688, in send
     raise ConnectTimeout(e, request=request)
 requests.exceptions.ConnectTimeout: HTTPSConnectionPool(host='api.wandb.ai', port=443): Max retries exceeded with url: /graphql (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x7fa733f96770>, 'Connection to api.wandb.ai timed out. (connect timeout=10)'))
+2025-08-08 20:57:37,319 INFO    MainThread:441230 [wandb_init.py:teardown():276] tearing down wandb.init
